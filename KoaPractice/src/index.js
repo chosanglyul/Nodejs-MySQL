@@ -1,7 +1,5 @@
 const Koa = require('koa');
-const app = new Koa();
 const Router = require('koa-router');
-const router = new Router();
 const client = require('cheerio-httpcli');
 const mysql = require('mysql');
 const db_config  = require('./config/db-config.json');
@@ -12,42 +10,53 @@ const connection = mysql.createConnection({
   database : db_config.database
 });
 
-function data(id) {
-    const url = "http://sshs.hs.kr/dggb/module/mlsv/selectMlsvDetailPopup.do?mlsvId="+id;
-    const param = {};
-    new Promise((resolve, reject) => {
-        client.fetch(url, param, function(err, $, res) {
-            if(err) { reject("ERROR!"); }
-            else { resolve($); }
+const app = new Koa();
+const router = new Router();
+
+function queryExec(sql) {
+    return new Promise((resolve, reject) => {
+        connection.query(sql, (err, res) => {
+            err ? reject(err) : resolve(res);
         });
-    }).then(arg => {
-        var query = "INSERT INTO Meal VALUES ("+id+',';
-        arg('table > tbody > tr > td').each(idx => {
-            if(idx >= 1 && idx <= 4) {
-                query += '\''+arg(this).text().trim()+'\'';
-                if(idx <= 3) { query += ','; }
-            }
-        });
-        query += ')';
-        connection.query(query);
-    }).catch(arg => {
-        console.log(arg);
     });
 }
 
-router.get('/api', (ctx, next) => {
+function data(id) {
+    return new Promise((resolve, reject) => {
+        const url = `http://sshs.hs.kr/dggb/module/mlsv/selectMlsvDetailPopup.do?mlsvId=${id}`;
+        const param = {};
+        client.fetch(url, param, function(err, $, res) {
+            err ? reject(err) : resolve($);
+        });
+    });
+}
+
+router.get('/api', async (ctx, next) => {
     const {id} = ctx.request.query;
-    connection.query("SELECT EXISTS (SELECT * FROM Meal WHERE id="+id+") AS SUCCESS", (err, results) => {
-        if(err) { console.log("ERROR!!!"); }
-        else { 
-            if(results[0].success == 0) { data(id); }
-            connection.query("SELECT * FROM Meal WHERE id="+id, (mealerr, mealresults) => {
-                if(mealerr) { console.log("ERROR!!!"); }
-                else { console.log(mealresults[0]); }
+    await queryExec("SELECT EXISTS (SELECT * FROM Meal WHERE id="+id+") AS SUCCESS").then(async results => {
+        if(results[0].SUCCESS == 0) {
+            await data(id).then(arg => {
+                var query = "INSERT INTO Meal VALUES ("+id+',';
+                arg('.ta_l').each(idx => {
+                    if(idx >= 1 && idx <= 4) {
+                        query += '\''+arg(this).text().trim()+'\'';
+                        if(idx <= 3) { query += ','; }
+                    }
+                });
+                query += ')';
+                return queryExec(query);
+            }).catch(err => {
+                console.log("ERROR!!!");
             });
         }
+        return queryExec(`SELECT * FROM Meal WHERE id=${id}`);
+    }).then(arg => {
+        ctx.body = arg[0].mdate;
+    }).catch(err => {
+        console.log("ERROR!!");
     });
-})
+    await next();
+});
 
 app.use(router.routes()).use(router.allowedMethods());
 
