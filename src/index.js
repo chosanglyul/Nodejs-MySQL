@@ -33,10 +33,10 @@ function data(id) {
 
 router.get('/api', async (ctx, next) => {
     const {id} = ctx.request.query;
-    await queryExec("SELECT EXISTS (SELECT * FROM Meal WHERE id="+id+") AS SUCCESS").then(async results => {
+    await queryExec(`SELECT EXISTS (SELECT * FROM Meal WHERE id=${id}) AS SUCCESS`).then(async results => {
         if(results[0].SUCCESS == 0) {
             await data(id).then(arg => {
-                var query = "INSERT INTO Meal VALUES ("+id+',';
+                var query = `INSERT INTO Meal VALUES (${id},`;
                 arg('.ta_l').each(idx => {
                     if(idx >= 1 && idx <= 4) {
                         query += '\''+arg(this).text().trim()+'\'';
@@ -46,14 +46,14 @@ router.get('/api', async (ctx, next) => {
                 query += ')';
                 return queryExec(query);
             }).catch(err => {
-                console.log("ERROR!!!");
+                console.log("Error in add data");
             });
         }
         return queryExec(`SELECT * FROM Meal WHERE id=${id}`);
     }).then(arg => {
-        ctx.body = arg[0].mdate;
+        ctx.body = `등록일 : ${arg[0].mdate}\n식단 : ${arg[0].mmeal}\n제목 : ${arg[0].mname}\n칼로리 : ${arg[0].cal}\n`;
     }).catch(err => {
-        console.log("ERROR!!");
+        console.log("Error in select data");
     });
     await next();
 });
